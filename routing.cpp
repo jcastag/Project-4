@@ -7,6 +7,7 @@
 #include <queue>
 #include <condition_variable>
 #include <random>
+#include <cstring>
 #include "graph.h"
 
 // Represents a message in the system, containing the number of hops
@@ -114,10 +115,110 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
+  
+
 }
 
+bool isValidNumber(char *a)
+{
+    if (a[0] == '-' || (strlen(a) == 1 && a[0] == '0'))
+    {
+        std::cout << "seconds parameter cannot be negative or zero." << std::endl;
+        return false;
+    }
+    else
+    {
+        for (int i = 0; i < strlen(a); i++)
+        {
+            if (!isdigit(a[i]))
+                return false;
+        }
+        return true;
+    }
+}
+
+bool isDatFile(std::string f)
+{
+    std::string end = ".dat";
+    std::string::iterator it;
+    std::string::iterator it2;
+    it = f.end();
+    it2 = end.end();
+    it2--;
+    it--;
+    int i = 0;
+    do
+    {
+        if (*it != *it2)
+            return false;
+        i++;
+        it--;
+        it2--;
+    } while (i < 3);
+
+    return true;
+}
+
+// running under windows, cannot use POSIX getopt()
 void parseArgs(int argc, char **argv, int &s, bool &r, std::string &f)
 {
+    if (argc <= 1)
+    {
+        std::cout << "Not enough arguments!" << std::endl;
+    }
+    else
+    {
+        std::string current = "";
+        for (int i = 1; i < argc; i++)
+        {
+            current = argv[i];
+
+            if (current == "-d") // PARSING FOR SECONDS PARAM
+            {
+                if (isValidNumber(argv[i + 1]))
+                {
+                    s = atoi(argv[i + 1]);
+                    std::cout << s << " seconds." << std::endl;
+                }
+                else if (!isValidNumber(argv[i + 1]))
+                {
+                    std::cout << "not valid seconds entry, using default value." << std::endl;
+                }
+            }
+            else if (current == "-r") // PARSING FOR ROUTING PARAM
+            {
+                std::string a = argv[i + 1];
+                if (a == "ant")
+                {
+                    r = true;
+                    std::cout << "ant routing method selected" << std::endl;
+                }
+                else
+                {
+                    r = false;
+                    if (a == "hot")
+                        std::cout << "hot-potato routing method selected" << std::endl;
+                    else
+                        std::cout << "no proper routing input: selecting hot-potato as default" << std::endl;
+                }
+            }
+            else if (current != "" && isDatFile(current)) // PARSING FOR FILE (REQUIRED PARAM)
+            {
+                // should be taking in the file name
+                f = argv[i];
+                std::ifstream file("graph/" + f);
+                if (!file.is_open())
+                {
+                    std::cerr << "Error opening file: " << f << std::endl;
+                    // exit(1);
+                }
+            }
+        }
+    }
+      if(!isDatFile(f)){
+        std::cout << "No valid file entered! exiting . . ." << std::endl;
+        exit(0);
+    }
 }
 
 // The main function of the program.Initializes the graph, threads,
@@ -127,10 +228,17 @@ int main(int argc, char **argv)
 {
 
     // TODO: ADD INPUT
-
+    int seconds;
+    bool isAnt;
     std::string filename;
+    for (int i = 0; i < argc; i++)
+    {
+        std::cout << argv[i] << std::endl;
+    }
 
-    Graph graph("a20.dat");
+    parseArgs(argc, argv, seconds, isAnt, filename);
+
+    Graph graph(filename);
 
     // Get the number of nodes from the graph
     const int num_threads = graph.getNodes().size();
