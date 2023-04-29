@@ -28,6 +28,7 @@ struct ThreadStatistics
     int messages_received;
     int messages_forwarded;
     int total_hops;
+    int total_kept_messages;
     double total_travel_time;
     std::mutex total_travel_time_mutex;
 };
@@ -107,7 +108,7 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
             }
 
             // Forward message if necessary
-            // TODO[] change requirement to stop forwarding be if the recipient id matches the current node
+            // TODO[x] change requirement to stop forwarding be if the recipient id matches the current node
             if (received_message.toId != nodeId)
             {
                 std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(rand_range(100, 500)));
@@ -133,9 +134,12 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
                 received_message.lastNodeId = nodeId;
                 all_queues[target_neighbor].send(received_message);
                 stats.messages_forwarded++;
+                stats.total_hops += received_message.hops;
             }
-
-            stats.total_hops += received_message.hops;
+            else // if message is at recipient, counter of kept letters is iterated and message is removed from queue without forwarding
+            {
+                stats.total_kept_messages++;
+            }
         }
         else
         {
@@ -150,9 +154,35 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
 //  TODO[] add formula for job spacing
 void MessageThread(MessageQueue &mq, std::atomic<bool> &terminate, const Graph &graph, int nodeId, std::vector<MessageQueue> &all_queues)
 {
+    const int lambda = 2;
+    int sleeptime = ((nodeId) * (lambda)) / (graph.getNodes().size());
+    int it = 0;
     const auto &neighbors = graph.getNeighbors(nodeId);
     while (!terminate)
     {
+        std::this_thread::sleep_for(std::chrono::seconds(sleeptime));
+        Message newMessage;
+        newMessage.fromId = nodeId;
+        newMessage.lastNodeId = nodeId;
+        // make random messages and send them to non-neighboring nodes
+        // forward to random neighbor
+        int target_neighbor;
+        int target;
+        do
+        {
+            int target = static_cast<int>(rand_range(0, graph.getNodes().size() - 1)); // picks random node from graph
+        } while (findInSet(neighbors, target) != -1);
+        newMessage.toId = target;
+
+        // PICKING RANDOM NEIGHBOR TO SEND NEWLY MADE MAIL TO
+        int random_neighbor_index = static_cast<int>(rand_range(0, neighbors.size() - 1));
+        auto it = neighbors.begin();
+        std::advance(it, random_neighbor_index);
+        target_neighbor = *it;
+
+        all_queues[target_neighbor].send(newMessage);
+        it++;
+        sleeptime = ((nodeId) * (lambda)) / (graph.getNodes().size() + (lambda) * (*it));
     }
 }
 
@@ -236,7 +266,7 @@ void parseArgs(int argc, char **argv, int &s, bool &r, std::string &f)
                     if (a == "hot")
                         std::cout << "hot-potato routing method selected" << std::endl;
                     else
-                        std::cout << "no proper routing input: selecting hot-potato as default" << std::endl;
+                        std::cout << "no valid routing input: selecting hot-potato as default" << std::endl;
                 }
             }
             else if (current != "" && isDatFile(current)) // PARSING FOR FILE (REQUIRED PARAM)
