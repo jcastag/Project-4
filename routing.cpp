@@ -14,8 +14,11 @@
 // it has taken and its travel time.
 struct Message
 {
-    int hops;
-    double travel_time;
+    int hops = 0;
+    double travel_time = 0;
+    int toId = 0;
+    int fromId = 0;
+    int lastNodeId = 0;
 };
 
 // Contains statistics for each working thread, including the number of messages received and forwarded,
@@ -94,11 +97,13 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
             }
 
             // Forward message if necessary
+            // TODO[] change requirement to stop forwarding be if the recipient id matches the current node
             if (received_message.hops < 20)
             {
                 std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(rand_range(100, 500)));
 
                 // Select a random neighbor
+                // TODO: is sent to correct node if recipient is neighbor
                 int random_neighbor_index = static_cast<int>(rand_range(0, neighbors.size() - 1));
                 auto it = neighbors.begin();
                 std::advance(it, random_neighbor_index);
@@ -114,6 +119,18 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+    }
+}
+
+// thread for making messages for each node
+//  TODO[] make messages
+//  messages should be sent to random neighbor, goal node should not be a neighbor
+//  TODO[] add formula for job spacing
+void MessageThread(MessageQueue &mq, std::atomic<bool> &terminate, const Graph &graph, int nodeId, std::vector<MessageQueue> &all_queues)
+{
+    const auto &neighbors = graph.getNeighbors(nodeId);
+    while (!terminate)
+    {
     }
 }
 
@@ -231,7 +248,7 @@ int main(int argc, char **argv)
     bool isAnt;
     std::string filename;
 
-    //Parses command line arguments
+    // Parses command line arguments
     parseArgs(argc, argv, seconds, isAnt, filename);
 
     Graph graph(filename);
@@ -239,7 +256,7 @@ int main(int argc, char **argv)
     // Get the number of nodes from the graph
     const int num_threads = graph.getNodes().size();
 
-    // const int num_threads = 10;
+    // TODO change how messages are made
     const int num_messages = 100;
 
     std::vector<ThreadStatistics> all_stats(num_threads);
@@ -247,18 +264,17 @@ int main(int argc, char **argv)
     std::vector<std::thread> all_threads;
     std::atomic<bool> terminate(false);
 
-    for (int i = 0; i < num_threads; i++)
-    {
-        all_threads.emplace_back(workingThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
-    }
-
     for (int i = 0; i < num_messages; i++)
     {
         Message initial_message{0, 0};
         all_queues[i % num_threads].send(initial_message);
     }
+    for (int i = 0; i < num_threads; i++)
+    {
+        all_threads.emplace_back(workingThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
+    }
 
-    std::this_thread::sleep_for(std::chrono::seconds(10));
+    std::this_thread::sleep_for(std::chrono::seconds(seconds));
 
     terminate = true;
     for (auto &thread : all_threads)
