@@ -64,6 +64,16 @@ private:
     std::condition_variable cond_var_;
 };
 
+int findInSet(std::set<int> S, int f)
+{
+    for (auto a : S)
+    {
+        if (a == f)
+            return f;
+    }
+    return -1;
+}
+
 // Returns a random double value within the specified range.
 double rand_range(double min, double max)
 {
@@ -98,17 +108,29 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
 
             // Forward message if necessary
             // TODO[] change requirement to stop forwarding be if the recipient id matches the current node
-            if (received_message.hops < 20)
+            if (received_message.toId != nodeId)
             {
                 std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(rand_range(100, 500)));
 
                 // Select a random neighbor
                 // TODO: is sent to correct node if recipient is neighbor
-                int random_neighbor_index = static_cast<int>(rand_range(0, neighbors.size() - 1));
-                auto it = neighbors.begin();
-                std::advance(it, random_neighbor_index);
-                int target_neighbor = *it;
+                int target_neighbor;
+                if (received_message.toId == findInSet(neighbors, received_message.toId)) // checks if recipient can be found in node's neighbor set
+                {
+                    target_neighbor = received_message.toId; // if found, assigns target to recipient
+                }
+                else
+                {
+                    do
+                    {
+                        int random_neighbor_index = static_cast<int>(rand_range(0, neighbors.size() - 1)); // TODO[x] ensure node does not send back to the node it recieved the message from
+                        auto it = neighbors.begin();
+                        std::advance(it, random_neighbor_index);
+                        target_neighbor = *it;
+                    } while (target_neighbor == received_message.lastNodeId);
+                }
 
+                received_message.lastNodeId = nodeId;
                 all_queues[target_neighbor].send(received_message);
                 stats.messages_forwarded++;
             }
