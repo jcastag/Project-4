@@ -115,8 +115,6 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
-  
-
 }
 
 bool isValidNumber(char *a)
@@ -215,7 +213,8 @@ void parseArgs(int argc, char **argv, int &s, bool &r, std::string &f)
             }
         }
     }
-      if(!isDatFile(f)){
+    if (!isDatFile(f))
+    {
         std::cout << "No valid file entered! exiting . . ." << std::endl;
         exit(0);
     }
@@ -227,15 +226,12 @@ void parseArgs(int argc, char **argv, int &s, bool &r, std::string &f)
 int main(int argc, char **argv)
 {
 
-    // TODO: ADD INPUT
+    // argument variables
     int seconds;
     bool isAnt;
     std::string filename;
-    for (int i = 0; i < argc; i++)
-    {
-        std::cout << argv[i] << std::endl;
-    }
 
+    //Parses command line arguments
     parseArgs(argc, argv, seconds, isAnt, filename);
 
     Graph graph(filename);
