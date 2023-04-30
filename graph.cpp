@@ -46,6 +46,36 @@ void Graph::addEdges()
     }
 }
 
+std::vector<Graph::Edge> Graph::getEdges(int node)
+{
+    std::vector<Edge> nodeEdges;
+
+    nodeEdges = this->edges_list[node];
+
+    return nodeEdges;
+}
+
+void Graph::setEdgeWeight(int fromNode, int ToNode, double val)
+{
+    std::vector<Edge> edges = getEdges(fromNode);
+    for (auto &e : edges)
+    {
+        if (e.sID == fromNode && e.sID == ToNode)
+            e.weight = val;
+    }
+}
+
+double Graph::getEdgeWeight(int fromNode, int ToNode)
+{
+    std::vector<Edge> edges = getEdges(fromNode);
+    for (auto &e : edges)
+    {
+        if (e.sID == fromNode && e.sID == ToNode)
+            return e.weight;
+    }
+    return 0;
+}
+
 const std::set<int> &Graph::getNeighbors(int node) const
 {
     return adjacency_list.at(node);

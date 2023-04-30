@@ -10,6 +10,10 @@
 #include <cstring>
 #include "graph.h"
 
+using std::cout;
+using std::endl;
+using std::mutex;
+
 // Represents a message in the system, containing the number of hops
 // it has taken and its travel time.
 struct Message
@@ -28,8 +32,10 @@ struct ThreadStatistics
     int messages_received;
     int messages_forwarded;
     int total_hops;
+    int messages_kept;
     double total_travel_time;
-    std::mutex total_travel_time_mutex;
+    chrono
+        std::mutex total_travel_time_mutex;
 };
 
 // A thread - safe message queue that allows sending and receiving messages.
@@ -64,9 +70,20 @@ private:
     std::condition_variable cond_var_;
 };
 
+int findInSet(std::set<int> S, int f)
+{
+    for (auto a : S)
+    {
+        if (a == f)
+            return f;
+    }
+    return -1;
+}
+
 // Returns a random double value within the specified range.
 double rand_range(double min, double max)
 {
+
     static std::random_device rd;
     static std::mt19937 gen(rd());
     std::uniform_real_distribution<double> dist(min, max);
@@ -84,7 +101,6 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
         Message received_message;
         if (mq.try_receive(received_message))
         {
-
             // Process the received message
             stats.messages_received++;
             received_message.hops++;
@@ -98,26 +114,93 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
 
             // Forward message if necessary
             // TODO[] change requirement to stop forwarding be if the recipient id matches the current node
-            if (received_message.hops < 20)
+            if (received_message.toId != nodeId)
             {
                 std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(rand_range(100, 500)));
-
+                int target_neighbor;
                 // Select a random neighbor
                 // TODO: is sent to correct node if recipient is neighbor
-                int random_neighbor_index = static_cast<int>(rand_range(0, neighbors.size() - 1));
-                auto it = neighbors.begin();
-                std::advance(it, random_neighbor_index);
-                int target_neighbor = *it;
-
+                if (findInSet(neighbors, received_message.toId) != -1)
+                {
+                    target_neighbor = received_message.toId;
+                }
+                else
+                {
+                    int random_neighbor_index = static_cast<int>(rand_range(0, neighbors.size() - 1));
+                    auto it = neighbors.begin();
+                    std::advance(it, random_neighbor_index);
+                    target_neighbor = *it;
+                }
                 all_queues[target_neighbor].send(received_message);
                 stats.messages_forwarded++;
+                stats.total_hops += received_message.hops;
+            }
+            else
+            {
+                stats.messages_kept++;
+                std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(rand_range(1, 500))));
+            }
+        }
+    }
+}
+
+void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> &terminate, Graph &graph, int nodeId, std::vector<MessageQueue> &all_queues)
+{
+    const auto &neighbors = graph.getNeighbors(nodeId);
+    const double pheremone = 20; // starting pheremone
+    const int n = 0;             // exponential increase
+    const int halflife = 0;
+    const int t = 0; // increment constant
+
+    for (auto &neighbor : neighbors)
+    {
+        graph.setEdgeWeight(nodeId, neighbor, pheremone);
+    }
+
+    while (!terminate)
+    {
+        Message received_message;
+        if (mq.try_receive(received_message))
+        {
+            // Process the received message
+            stats.messages_received++;
+            received_message.hops++;
+            received_message.travel_time += rand_range(0.01, 0.1);
+
+            // Update the total_travel_time safely
+            {
+                std::unique_lock<std::mutex> lock(stats.total_travel_time_mutex);
+                stats.total_travel_time += received_message.travel_time;
             }
 
-            stats.total_hops += received_message.hops;
-        }
-        else
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            // Forward message if necessary
+            // TODO[] change requirement to stop forwarding be if the recipient id matches the current node
+            if (received_message.toId != nodeId)
+            {
+                std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(rand_range(100, 500)));
+                int target_neighbor;
+                // Select a random neighbor
+                // TODO: is sent to correct node if recipient is neighbor
+                if (findInSet(neighbors, received_message.toId) != -1)
+                {
+                    target_neighbor = received_message.toId;
+                }
+                else
+                {
+                    int random_neighbor_index = static_cast<int>(rand_range(0, neighbors.size() - 1));
+                    auto it = neighbors.begin();
+                    std::advance(it, random_neighbor_index);
+                    target_neighbor = *it;
+                }
+                all_queues[target_neighbor].send(received_message);
+                stats.messages_forwarded++;
+                stats.total_hops += received_message.hops;
+            }
+            else
+            {
+                stats.messages_kept++;
+                std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(rand_range(1, 500))));
+            }
         }
     }
 }
@@ -128,10 +211,35 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
 //  TODO[] add formula for job spacing
 void MessageThread(MessageQueue &mq, std::atomic<bool> &terminate, const Graph &graph, int nodeId, std::vector<MessageQueue> &all_queues)
 {
+    int lambda = 15;
+    int gSize = static_cast<int>(graph.getNodes().size());
+    int sent = 0;
+    int denominator = (gSize + lambda);
+    int i = 0;
     const auto &neighbors = graph.getNeighbors(nodeId);
     while (!terminate)
     {
+
+        int sleep_duration = ((nodeId) * (lambda)) / denominator;
+
+        Message initial_message;
+        initial_message.fromId = nodeId;
+        initial_message.lastNodeId = nodeId;
+        int to = 0;
+        // setting to node
+        do
+        {
+            to = static_cast<int>(rand_range(0, graph.getNodes().size()));
+        } while (findInSet(neighbors, to) != -1);
+        initial_message.toId = to;
+        all_queues[nodeId % graph.getNodes().size()].send(initial_message);
+        sent++;
+        i++;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_duration));
+        denominator = gSize + (lambda * i);
     }
+    int k = 0;
 }
 
 bool isValidNumber(char *a)
@@ -227,8 +335,19 @@ void parseArgs(int argc, char **argv, int &s, bool &r, std::string &f)
                     std::cerr << "Error opening file: " << f << std::endl;
                     // exit(1);
                 }
+                else
+                {
+                    cout << "using file: " << f << endl;
+                }
             }
         }
+        if (r)
+        {
+            cout << "using ant routing" << endl;
+        }
+        else
+            cout << "using hot-potato routing" << endl;
+        cout << endl;
     }
     if (!isDatFile(f))
     {
@@ -264,22 +383,24 @@ int main(int argc, char **argv)
     std::vector<std::thread> all_threads;
     std::atomic<bool> terminate(false);
 
-    for (int i = 0; i < num_messages; i++)
-    {
-        Message initial_message{0, 0};
-        all_queues[i % num_threads].send(initial_message);
-    }
     for (int i = 0; i < num_threads; i++)
     {
+        all_threads.emplace_back(MessageThread, std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
+
         all_threads.emplace_back(workingThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(seconds));
 
     terminate = true;
+    int i = 0;
     for (auto &thread : all_threads)
     {
-        thread.join();
+        if (thread.joinable())
+            thread.join();
+        else
+            thread.detach();
+        i++;
     }
 
     for (int i = 0; i < num_threads; i++)
@@ -287,6 +408,7 @@ int main(int argc, char **argv)
         std::cout << "Thread " << i << " statistics:\n";
         std::cout << "  Messages received: " << all_stats[i].messages_received << '\n';
         std::cout << "  Messages forwarded: " << all_stats[i].messages_forwarded << '\n';
+        std::cout << "  Messages kept: " << all_stats[i].messages_kept << '\n';
         std::cout << "  Total hops: " << all_stats[i].total_hops << '\n';
         std::cout << "  Total travel time: " << all_stats[i].total_travel_time << '\n';
     }

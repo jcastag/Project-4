@@ -23,8 +23,8 @@ public:
         }
         Edge()
         {
-            this->sID = 0;
-            this->eID = 0;
+            this->sID = 0; // start ID
+            this->eID = 0; // end ID
             this->weight = 0;
         }
     };
@@ -33,6 +33,9 @@ public:
     Graph(const std::string &filename, bool ant);
     const std::set<int> &getNeighbors(int node) const;
     const std::vector<int> &getNodes() const;
+    std::vector<Edge> getEdges(int node);
+    void setEdgeWeight(int fn, int tn, double v);
+    double getEdgeWeight(int fn, int tn);
 
 private:
     bool isAnt;
