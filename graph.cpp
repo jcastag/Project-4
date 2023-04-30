@@ -57,12 +57,14 @@ std::vector<Graph::Edge> Graph::getEdges(int node)
 
 void Graph::setEdgeWeight(int fromNode, int ToNode, double val)
 {
+    this->mtx.lock();
     std::vector<Edge> edges = getEdges(fromNode);
     for (auto &e : edges)
     {
         if (e.sID == fromNode && e.sID == ToNode)
             e.weight = val;
     }
+    this->mtx.unlock();
 }
 
 double Graph::getEdgeWeight(int fromNode, int ToNode)

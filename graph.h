@@ -1,6 +1,6 @@
 #ifndef GRAPH_H
 #define GRAPH_H
-
+#include <mutex>
 #include <map>
 #include <set>
 #include <string>
@@ -42,7 +42,7 @@ private:
     std::map<int, std::set<int>> adjacency_list;
     std::map<int, std::vector<Edge>> edges_list;
     std::vector<int> nodes;
-
+    std::mutex mtx;
     void addEdges();
     void readFile(const std::string &filename);
 };

@@ -3,7 +3,7 @@
 #include <chrono>
 #include <thread>
 #include <atomic>
-#include <mutex>
+
 #include <queue>
 #include <condition_variable>
 #include <random>
@@ -23,6 +23,8 @@ struct Message
     int toId = 0;
     int fromId = 0;
     int lastNodeId = 0;
+    std::chrono::time_point<std::chrono::system_clock> timeSent;
+    std::chrono::time_point<std::chrono::system_clock> timeReceived;
 };
 
 // Contains statistics for each working thread, including the number of messages received and forwarded,
@@ -34,8 +36,8 @@ struct ThreadStatistics
     int total_hops;
     int messages_kept;
     double total_travel_time;
-    chrono
-        std::mutex total_travel_time_mutex;
+    std::vector<double> letter_delivery_times;
+    std::mutex total_travel_time_mutex;
 };
 
 // A thread - safe message queue that allows sending and receiving messages.
@@ -137,6 +139,9 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
             }
             else
             {
+                received_message.timeReceived = std::chrono::system_clock::now();
+                double d = std::chrono::duration<double>(std::chrono::duration_cast<std::chrono::milliseconds>(received_message.timeReceived - received_message.timeSent)).count();
+                stats.letter_delivery_times.push_back(d);
                 stats.messages_kept++;
                 std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(rand_range(1, 500))));
             }
@@ -144,13 +149,17 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
     }
 }
 
+void pheremoneEvapThread(Graph &graph)
+{
+    const int hl = 5; // dilution half-life
+}
+
 void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> &terminate, Graph &graph, int nodeId, std::vector<MessageQueue> &all_queues)
 {
     const auto &neighbors = graph.getNeighbors(nodeId);
     const double pheremone = 20; // starting pheremone
-    const int n = 0;             // exponential increase
-    const int halflife = 0;
-    const int t = 0; // increment constant
+    const int n = 8;             // power coefficient
+    const int inc = 5;           // incremental constant
 
     for (auto &neighbor : neighbors)
     {
@@ -166,12 +175,14 @@ void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<boo
             stats.messages_received++;
             received_message.hops++;
             received_message.travel_time += rand_range(0.01, 0.1);
-
             // Update the total_travel_time safely
             {
                 std::unique_lock<std::mutex> lock(stats.total_travel_time_mutex);
                 stats.total_travel_time += received_message.travel_time;
             }
+            // pheremone incremental increase
+            graph.setEdgeWeight(nodeId, received_message.fromId,
+                                graph.getEdgeWeight(nodeId, received_message.fromId) + inc);
 
             // Forward message if necessary
             // TODO[] change requirement to stop forwarding be if the recipient id matches the current node
@@ -187,10 +198,7 @@ void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<boo
                 }
                 else
                 {
-                    int random_neighbor_index = static_cast<int>(rand_range(0, neighbors.size() - 1));
-                    auto it = neighbors.begin();
-                    std::advance(it, random_neighbor_index);
-                    target_neighbor = *it;
+                    // DO ANT MATH HERE
                 }
                 all_queues[target_neighbor].send(received_message);
                 stats.messages_forwarded++;
@@ -199,6 +207,9 @@ void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<boo
             else
             {
                 stats.messages_kept++;
+                received_message.timeReceived = std::chrono::system_clock::now();
+                double d = std::chrono::duration<double>(std::chrono::duration_cast<std::chrono::milliseconds>(received_message.timeReceived - received_message.timeSent)).count();
+                stats.letter_delivery_times.push_back(d);
                 std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(rand_range(1, 500))));
             }
         }
@@ -232,6 +243,7 @@ void MessageThread(MessageQueue &mq, std::atomic<bool> &terminate, const Graph &
             to = static_cast<int>(rand_range(0, graph.getNodes().size()));
         } while (findInSet(neighbors, to) != -1);
         initial_message.toId = to;
+        initial_message.timeSent = std::chrono::system_clock::now();
         all_queues[nodeId % graph.getNodes().size()].send(initial_message);
         sent++;
         i++;
@@ -356,6 +368,26 @@ void parseArgs(int argc, char **argv, int &s, bool &r, std::string &f)
     }
 }
 
+void pheremoneThreadFunc(Graph &graph, std::atomic<bool> &terminate)
+{
+    int gSize = graph.getNodes().size();
+    int evapRate = 2;
+    while (!terminate)
+    {
+        // go through each node
+        // alter each edge for each node
+        for (int i = 0; i < gSize; i++)
+        {
+            for (auto &e : graph.getEdges(i))
+            {
+                e.weight *= (1 - evapRate);
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        // sleep increment time
+    }
+}
+
 // The main function of the program.Initializes the graph, threads,
 // message queues, and statistics.Sends initial messages, waits for a
 // specified time, then terminates the threadsand prints the statistics.
@@ -386,8 +418,19 @@ int main(int argc, char **argv)
     for (int i = 0; i < num_threads; i++)
     {
         all_threads.emplace_back(MessageThread, std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
+        if (!isAnt)
+            all_threads.emplace_back(workingThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
+        else
+        {
+            all_threads.emplace_back(workingAntThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::ref(graph), graph.getNodes()[i], std::ref(all_queues));
+        }
+    }
 
-        all_threads.emplace_back(workingThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
+    if (isAnt)
+    { // makes thread for pheremone updates
+        // pheremone updates
+        int pheremone_update_interval;
+        std::thread pheremoneThread = std::thread(pheremoneEvapThread, std::ref(graph), std::ref(terminate));
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(seconds));
@@ -411,6 +454,12 @@ int main(int argc, char **argv)
         std::cout << "  Messages kept: " << all_stats[i].messages_kept << '\n';
         std::cout << "  Total hops: " << all_stats[i].total_hops << '\n';
         std::cout << "  Total travel time: " << all_stats[i].total_travel_time << '\n';
+        double td = 0;
+        for (auto &lt : all_stats[i].letter_delivery_times)
+        {
+            td += lt;
+        }
+        std::cout << "  Average letter travel time: " << (td / all_stats[i].letter_delivery_times.size()) << " ms \n";
     }
 
     return 0;
