@@ -19,10 +19,10 @@ using std::mutex;
 
 struct AntConstants
 {
-    double startPheremone = 10.0; // starting pheremont
-    int pc = 4;                   // power coefficient
-    int c = 5;                    // incremental constant
-    int hl = 2;                   // dilution half-life
+    double startPheremone = 582; // starting pheremont
+    int pc = 25;                 // power coefficient
+    int c = 1;                   // incremental constant
+    int hl = 2;                  // dilution half-life
 };
 
 struct Message
@@ -108,7 +108,7 @@ int pickAntNode(AntConstants ac, Graph &g, int neighbor, int nodeId)
     // calculate probability
     // use rand_range(1,100) > probability*10 to send t/f back
     double pheremone = g.getEdgeWeight(nodeId, neighbor);
-    double denom;
+    double denom = 1;
 
     for (int i = 0; i < g.getNodes().size(); i++)
     {
@@ -222,6 +222,7 @@ void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<boo
                 {
                     // DO ANT MATH HERE
                     bool nodePicked = false;
+                    int i = 0;
                     while (!nodePicked)
                     {
                         // picks random node
@@ -231,6 +232,9 @@ void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<boo
                         target_neighbor = *it;
                         // sends that node's edge to a function to calculate probability and send back if it is picked
                         nodePicked = pickAntNode(ac, graph, *it, nodeId);
+                        i++;
+                        if (i > 10)
+                            break;
                         // if it is not picked, pick another random node until node is selected
                     }
                 }
@@ -248,6 +252,7 @@ void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<boo
             }
         }
     }
+    int k = 0;
 }
 
 // thread for making messages for each node
@@ -324,7 +329,6 @@ bool isDatFile(std::string f)
         it--;
         it2--;
     } while (i < 3);
-
     return true;
 }
 
@@ -461,20 +465,38 @@ int main(int argc, char **argv)
             all_threads.emplace_back(workingThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
         }
     }
+    /*
+        std::thread pheremoneThread;
 
-    std::thread pheremoneThread;
-
-    if (isAnt)
-    { // makes thread for pheremone updates
-        // pheremone updates
-        int pheremone_update_interval;
-        pheremoneThread = std::thread(pheremoneEvap, std::ref(graph), std::ref(terminate), ant_constants);
-    }
-
+        if (isAnt)
+        { // makes thread for pheremone updates
+            // pheremone updates
+            int pheremone_update_interval;
+            pheremoneThread = std::thread(pheremoneEvap, std::ref(graph), std::ref(terminate), ant_constants);
+        }
+    */
     std::this_thread::sleep_for(std::chrono::seconds(seconds));
 
     terminate = true;
     int i = 0;
+
+    for (int i = 0; i < num_threads; i++)
+    {
+        std::cout << "Thread " << i << " statistics:\n";
+        std::cout << "  Messages received: " << all_stats[i].messages_received << '\n';
+        std::cout << "  Messages forwarded: " << all_stats[i].messages_forwarded << '\n';
+        std::cout << "  Messages kept: " << all_stats[i].messages_kept << '\n';
+        std::cout << "  Total hops: " << all_stats[i].total_hops << '\n';
+        std::cout << "  Total travel time: " << all_stats[i].total_travel_time << '\n';
+        double td = 0;
+        for (auto &lt : all_stats[i].letter_delivery_times)
+        {
+            td += lt;
+        }
+        std::cout << "  Average letter travel time: " << (td / all_stats[i].letter_delivery_times.size()) << " ms \n";
+    }
+
+    // pheremoneThread.join();
     for (auto &thread : all_threads)
     {
         if (thread.joinable())
@@ -483,7 +505,6 @@ int main(int argc, char **argv)
             thread.detach();
         i++;
     }
-    pheremoneThread.join();
 
     for (int i = 0; i < num_threads; i++)
     {

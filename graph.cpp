@@ -6,13 +6,12 @@ Graph::Graph(const std::string &filename)
 {
     std::string fn = "graph/" + filename;
     readFile(fn);
+    addEdges();
 }
 
 Graph::Graph(const std::string &filename, bool ant)
 {
     std::string fn = "graph/" + filename;
-    if (ant)
-        this->isAnt = true;
     readFile(fn);
     addEdges();
 }
@@ -36,10 +35,7 @@ void Graph::addEdges()
             e.eID = i;
             e.sID = *itr;
 
-            if (isAnt)
-                e.weight = base;
-            else
-                e.weight = 0; // gives empty weight if using hot-potato
+            e.weight = base;
 
             this->edges_list[i].push_back(e);
         }
@@ -58,6 +54,10 @@ std::vector<Graph::Edge> Graph::getEdges(int node)
 void Graph::setEdgeWeight(int fromNode, int ToNode, double val)
 {
     this->mtx.lock();
+    if (val <= 0)
+    {
+        val = 1;
+    }
     std::vector<Edge> edges = getEdges(fromNode);
     for (auto &e : edges)
     {

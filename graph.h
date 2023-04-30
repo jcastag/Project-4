@@ -25,7 +25,7 @@ public:
         {
             this->sID = 0; // start ID
             this->eID = 0; // end ID
-            this->weight = 0;
+            this->weight = 200;
         }
     };
 
@@ -38,7 +38,6 @@ public:
     double getEdgeWeight(int fn, int tn);
 
 private:
-    bool isAnt;
     std::map<int, std::set<int>> adjacency_list;
     std::map<int, std::vector<Edge>> edges_list;
     std::vector<int> nodes;
