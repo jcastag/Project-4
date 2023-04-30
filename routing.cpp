@@ -16,6 +16,15 @@ using std::mutex;
 
 // Represents a message in the system, containing the number of hops
 // it has taken and its travel time.
+
+struct AntConstants
+{
+    double startPheremone = 10.0; // starting pheremont
+    int pc = 4;                   // power coefficient
+    int c = 5;                    // incremental constant
+    int hl = 2;                   // dilution half-life
+};
+
 struct Message
 {
     int hops = 0;
@@ -92,6 +101,12 @@ double rand_range(double min, double max)
     return dist(gen);
 }
 
+int pickAntNode() // add arguments
+{
+
+    return 0; // temp return
+}
+
 // The main function executed by each thread. Processes messages and forwards them to random neighbors in the graph.
 
 void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> &terminate, const Graph &graph, int nodeId, std::vector<MessageQueue> &all_queues)
@@ -149,17 +164,12 @@ void workingThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> 
     }
 }
 
-void pheremoneEvapThread(Graph &graph)
-{
-    const int hl = 5; // dilution half-life
-}
-
-void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> &terminate, Graph &graph, int nodeId, std::vector<MessageQueue> &all_queues)
+void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<bool> &terminate, Graph &graph, int nodeId, std::vector<MessageQueue> &all_queues, AntConstants ac)
 {
     const auto &neighbors = graph.getNeighbors(nodeId);
-    const double pheremone = 20; // starting pheremone
-    const int n = 8;             // power coefficient
-    const int inc = 5;           // incremental constant
+    const double pheremone = ac.startPheremone; // starting pheremone
+    const int n = ac.pc;                        // power coefficient
+    const int inc = ac.c;                       // incremental constant
 
     for (auto &neighbor : neighbors)
     {
@@ -368,10 +378,9 @@ void parseArgs(int argc, char **argv, int &s, bool &r, std::string &f)
     }
 }
 
-void pheremoneThreadFunc(Graph &graph, std::atomic<bool> &terminate)
+void pheremoneEvap(Graph &graph, std::atomic<bool> &terminate, AntConstants ac)
 {
     int gSize = graph.getNodes().size();
-    int evapRate = 2;
     while (!terminate)
     {
         // go through each node
@@ -380,7 +389,7 @@ void pheremoneThreadFunc(Graph &graph, std::atomic<bool> &terminate)
         {
             for (auto &e : graph.getEdges(i))
             {
-                e.weight *= (1 - evapRate);
+                e.weight *= (1 - ac.hl);
             }
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -398,6 +407,8 @@ int main(int argc, char **argv)
     int seconds;
     bool isAnt;
     std::string filename;
+
+    AntConstants ant_constants;
 
     // Parses command line arguments
     parseArgs(argc, argv, seconds, isAnt, filename);
@@ -418,11 +429,12 @@ int main(int argc, char **argv)
     for (int i = 0; i < num_threads; i++)
     {
         all_threads.emplace_back(MessageThread, std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
-        if (!isAnt)
-            all_threads.emplace_back(workingThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
+        if (isAnt) // IF ANT ROUTING IS SELECTED
+            all_threads.emplace_back(workingAntThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::ref(graph), graph.getNodes()[i], std::ref(all_queues), ant_constants);
+
         else
         {
-            all_threads.emplace_back(workingAntThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::ref(graph), graph.getNodes()[i], std::ref(all_queues));
+            all_threads.emplace_back(workingThread, std::ref(all_stats[i]), std::ref(all_queues[i]), std::ref(terminate), std::cref(graph), graph.getNodes()[i], std::ref(all_queues));
         }
     }
 
@@ -430,7 +442,7 @@ int main(int argc, char **argv)
     { // makes thread for pheremone updates
         // pheremone updates
         int pheremone_update_interval;
-        std::thread pheremoneThread = std::thread(pheremoneEvapThread, std::ref(graph), std::ref(terminate));
+        std::thread pheremoneThread(pheremoneEvap, std::ref(graph), std::ref(terminate), ant_constants);
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(seconds));
