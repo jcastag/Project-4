@@ -102,9 +102,9 @@ double rand_range(double min, double max)
 }
 
 // function to pick next ant node from neighbors
-int pickAntNode(AntConstants ac, Graph g, std::set<int> neighbors) // add arguments
+int pickAntNode(AntConstants ac, Graph &g, std::set<int> neighbors)
 {
-    int targetNode;
+    int targetNode = 0;
 
     return targetNode; // temp return
 }
@@ -211,6 +211,7 @@ void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<boo
                 else
                 {
                     // DO ANT MATH HERE
+                    target_neighbor = pickAntNode(ac, graph, neighbors);
                 }
                 all_queues[target_neighbor].send(received_message);
                 stats.messages_forwarded++;
