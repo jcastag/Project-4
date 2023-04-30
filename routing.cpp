@@ -3,7 +3,7 @@
 #include <chrono>
 #include <thread>
 #include <atomic>
-
+#include <cmath>
 #include <queue>
 #include <condition_variable>
 #include <random>
@@ -102,11 +102,21 @@ double rand_range(double min, double max)
 }
 
 // function to pick next ant node from neighbors
-int pickAntNode(AntConstants ac, Graph &g, std::set<int> neighbors)
+int pickAntNode(AntConstants ac, Graph &g, int neighbor, int nodeId)
 {
-    int targetNode = 0;
+    // get weight of edge
+    // calculate probability
+    // use rand_range(1,100) > probability*10 to send t/f back
+    double pheremone = g.getEdgeWeight(nodeId, neighbor);
+    double denom;
 
-    return targetNode; // temp return
+    for (int i = 0; i < g.getNodes().size(); i++)
+    {
+        denom += pow(pheremone, ac.pc);
+    }
+
+    double probability = ((pow(pheremone, ac.pc)) / denom) * 10;
+    return rand_range(0, 100) > probability; // temp return
 }
 
 // The main function executed by each thread. Processes messages and forwards them to random neighbors in the graph.
@@ -211,7 +221,18 @@ void workingAntThread(ThreadStatistics &stats, MessageQueue &mq, std::atomic<boo
                 else
                 {
                     // DO ANT MATH HERE
-                    target_neighbor = pickAntNode(ac, graph, neighbors);
+                    bool nodePicked = false;
+                    while (!nodePicked)
+                    {
+                        // picks random node
+                        int random_neighbor_index = static_cast<int>(rand_range(0, neighbors.size() - 1));
+                        auto it = neighbors.begin();
+                        std::advance(it, random_neighbor_index);
+                        target_neighbor = *it;
+                        // sends that node's edge to a function to calculate probability and send back if it is picked
+                        nodePicked = pickAntNode(ac, graph, *it, nodeId);
+                        // if it is not picked, pick another random node until node is selected
+                    }
                 }
                 all_queues[target_neighbor].send(received_message);
                 stats.messages_forwarded++;
@@ -441,11 +462,13 @@ int main(int argc, char **argv)
         }
     }
 
+    std::thread pheremoneThread;
+
     if (isAnt)
     { // makes thread for pheremone updates
         // pheremone updates
         int pheremone_update_interval;
-        std::thread pheremoneThread(pheremoneEvap, std::ref(graph), std::ref(terminate), ant_constants);
+        pheremoneThread = std::thread(pheremoneEvap, std::ref(graph), std::ref(terminate), ant_constants);
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(seconds));
@@ -460,6 +483,7 @@ int main(int argc, char **argv)
             thread.detach();
         i++;
     }
+    pheremoneThread.join();
 
     for (int i = 0; i < num_threads; i++)
     {
