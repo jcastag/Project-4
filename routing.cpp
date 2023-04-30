@@ -101,10 +101,12 @@ double rand_range(double min, double max)
     return dist(gen);
 }
 
-int pickAntNode() // add arguments
+// function to pick next ant node from neighbors
+int pickAntNode(AntConstants ac, Graph g, std::set<int> neighbors) // add arguments
 {
+    int targetNode;
 
-    return 0; // temp return
+    return targetNode; // temp return
 }
 
 // The main function executed by each thread. Processes messages and forwards them to random neighbors in the graph.
